@@ -1,7 +1,7 @@
 const MAX_CENTS = BigInt(Number.MAX_SAFE_INTEGER);
 const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 const STATE_KEYS = ['version', 'currency', 'accounts', 'transactions', 'settings'];
-const ACCOUNT_KEYS = ['id', 'name', 'color', 'openingBalance'];
+const ACCOUNT_KEYS = ['id', 'name', 'color', 'openingBalance', 'monthlyAllowance'];
 const TRANSACTION_KEYS = ['id', 'type', 'amount', 'accountId', 'toAccountId', 'purpose', 'date', 'createdAt'];
 
 function fail(message) {
@@ -88,7 +88,9 @@ function validateAccounts(accounts) {
     ids.add(id);
     const name = string(value.name, '账户名称', 40);
     if (typeof value.color !== 'string' || !/^#[\da-f]{3}(?:[\da-f]{3})?$/i.test(value.color)) fail('账户颜色不正确');
-    return { id, name, color: value.color, openingBalance: cents(value.openingBalance, '起始余额', true) };
+    const account = { id, name, color: value.color, openingBalance: cents(value.openingBalance, '起始余额', true) };
+    if (value.monthlyAllowance !== undefined) account.monthlyAllowance = cents(value.monthlyAllowance, '每月固定额度');
+    return account;
   });
 }
 
@@ -204,12 +206,30 @@ export function validateState(value) {
   return result;
 }
 
-export function getBalances(state) {
-  return calculateBalances(validateState(state));
+export function getBalances(state, monthKey = localDate().slice(0, 7)) {
+  if (typeof monthKey !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(monthKey)) fail('月份不正确');
+  const checked = validateState(state);
+  const monthly = new Set(checked.accounts.filter((account) => account.monthlyAllowance !== undefined).map((account) => account.id));
+  const inMonth = (tx) => tx.date.startsWith(`${monthKey}-`);
+  const balances = {};
+  for (const account of checked.accounts) {
+    balances[account.id] = account.monthlyAllowance !== undefined ? account.monthlyAllowance : account.openingBalance;
+  }
+  for (const tx of checked.transactions) {
+    const fromMonthly = monthly.has(tx.accountId);
+    const toMonthly = tx.toAccountId ? monthly.has(tx.toAccountId) : false;
+    if (tx.type === 'income') {
+      if (!fromMonthly || inMonth(tx)) balances[tx.accountId] = add(balances[tx.accountId], tx.amount, '账户余额');
+    } else {
+      if (!fromMonthly || inMonth(tx)) balances[tx.accountId] = add(balances[tx.accountId], -tx.amount, '账户余额');
+      if (tx.type === 'transfer' && (!toMonthly || inMonth(tx))) balances[tx.toAccountId] = add(balances[tx.toAccountId], tx.amount, '账户余额');
+    }
+  }
+  return balances;
 }
 
-export function getTotalBalance(state) {
-  const total = Object.values(getBalances(state)).reduce((sum, balance) => sum + BigInt(balance), 0n);
+export function getTotalBalance(state, monthKey = localDate().slice(0, 7)) {
+  const total = Object.values(getBalances(state, monthKey)).reduce((sum, balance) => sum + BigInt(balance), 0n);
   if (total > MAX_CENTS || total < -MAX_CENTS) fail('总余额超出可支持的金额范围');
   return Number(total);
 }
