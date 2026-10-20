@@ -1,7 +1,7 @@
 const MAX_CENTS = BigInt(Number.MAX_SAFE_INTEGER);
 const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 const STATE_KEYS = ['version', 'currency', 'accounts', 'transactions', 'settings'];
-const ACCOUNT_KEYS = ['id', 'name', 'color', 'openingBalance', 'monthlyAllowance'];
+const ACCOUNT_KEYS = ['id', 'name', 'color', 'openingBalance', 'monthlyAllowance', 'allowanceMonth'];
 const TRANSACTION_KEYS = ['id', 'type', 'amount', 'accountId', 'toAccountId', 'purpose', 'date', 'createdAt'];
 
 function fail(message) {
@@ -89,7 +89,13 @@ function validateAccounts(accounts) {
     const name = string(value.name, '账户名称', 40);
     if (typeof value.color !== 'string' || !/^#[\da-f]{3}(?:[\da-f]{3})?$/i.test(value.color)) fail('账户颜色不正确');
     const account = { id, name, color: value.color, openingBalance: cents(value.openingBalance, '起始余额', true) };
-    if (value.monthlyAllowance !== undefined) account.monthlyAllowance = cents(value.monthlyAllowance, '每月固定额度');
+    if (value.monthlyAllowance !== undefined) {
+      account.monthlyAllowance = cents(value.monthlyAllowance, '每月固定额度');
+      if (value.allowanceMonth !== undefined) {
+        if (typeof value.allowanceMonth !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(value.allowanceMonth)) fail('额度月份不正确');
+        account.allowanceMonth = value.allowanceMonth;
+      }
+    }
     return account;
   });
 }
@@ -213,7 +219,7 @@ export function getBalances(state, monthKey = localDate().slice(0, 7)) {
   const inMonth = (tx) => tx.date.startsWith(`${monthKey}-`);
   const balances = {};
   for (const account of checked.accounts) {
-    balances[account.id] = account.monthlyAllowance !== undefined ? account.monthlyAllowance : account.openingBalance;
+    balances[account.id] = account.openingBalance;
   }
   for (const tx of checked.transactions) {
     const fromMonthly = monthly.has(tx.accountId);
