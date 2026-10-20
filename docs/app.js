@@ -118,7 +118,7 @@ function setup(){
 }
 function openAccount(id){
   const old=state.accounts.find(a=>a.id===id);let color=old?.color||colors[state.accounts.length%colors.length];
-  showModal(`<form id="account-form"><label class="field"><span>账户名称</span><input id="account-name" maxlength="20" value="${esc(old?.name||'')}" placeholder="例如：招商银行卡" required></label><label class="field"><span>起始余额（元）</span><input id="account-opening" inputmode="decimal" value="${old?formatMoney(old.openingBalance):''}" placeholder="0.00"></label><label class="field"><span>每月固定额度（元，可选）</span><input id="account-allowance" inputmode="decimal" value="${old?.monthlyAllowance?formatMoney(old.monthlyAllowance):''}" placeholder="例如 1000，留空为普通账户"></label><p class="section-caption">${old?'这是开始记账前的余额，修改会影响当前余额。日常的收入、支出和转账请通过记账记录。':'填写这个账户在开始记录前已有的金额。'}<br>填了“每月固定额度”后，这个账户每月按额度重新计算，上月没花完的不累计；额度不计入收入，当月的支出和转账会从额度里扣。</p><span class="field-label" style="margin-top:22px">账户颜色</span><div class="color-options">${colors.map(c=>`<button type="button" class="color-option ${c===color?'active':''}" data-color="${c}" style="--swatch:${c}" aria-label="选择颜色 ${c}" aria-pressed="${c===color}"></button>`).join('')}</div><div id="form-error" class="form-error"></div><div class="modal-actions"><button type="button" class="secondary" id="cancel-account">取消</button><button id="save-button" class="primary" type="submit">保存账户</button></div></form>${old?'<button class="delete-button" id="delete-account">删除账户</button>':''}`,{title:old?'管理账户':'添加一个账户'});
+  showModal(`<form id="account-form"><label class="field"><span>账户名称</span><input id="account-name" maxlength="20" value="${esc(old?.name||'')}" placeholder="例如：招商银行卡" required></label><label class="field"><span>起始余额（元）</span><input id="account-opening" inputmode="decimal" value="${old?formatMoney(old.openingBalance):''}" placeholder="0.00"></label><label class="field"><span>每月固定额度（元，可选）</span><input id="account-allowance" inputmode="decimal" value="${old?.monthlyAllowance?formatMoney(old.monthlyAllowance):''}" placeholder="例如 1000，留空为普通账户"></label><p class="section-caption">${old?'这是开始记账前的余额，修改会影响当前余额。日常的收入、支出和转账请通过记账记录。':'填写这个账户在开始记录前已有的金额。'}<br>填了“每月固定额度”后，这里填本月开始时的实际余额（比如月中添加时填 200）；每月 1 号会自动变回额度，额度不计入收入。</p><span class="field-label" style="margin-top:22px">账户颜色</span><div class="color-options">${colors.map(c=>`<button type="button" class="color-option ${c===color?'active':''}" data-color="${c}" style="--swatch:${c}" aria-label="选择颜色 ${c}" aria-pressed="${c===color}"></button>`).join('')}</div><div id="form-error" class="form-error"></div><div class="modal-actions"><button type="button" class="secondary" id="cancel-account">取消</button><button id="save-button" class="primary" type="submit">保存账户</button></div></form>${old?'<button class="delete-button" id="delete-account">删除账户</button>':''}`,{title:old?'管理账户':'添加一个账户'});
   $('#cancel-account').onclick=closeModal;
   document.querySelectorAll('[data-color]').forEach(b=>b.onclick=()=>{color=b.dataset.color;document.querySelectorAll('[data-color]').forEach(x=>{x.classList.toggle('active',x===b);x.setAttribute('aria-pressed',String(x===b));});});
   $('#account-form').onsubmit=e=>{e.preventDefault();formTask(async()=>{
@@ -126,7 +126,7 @@ function openAccount(id){
     if(state.accounts.some(a=>a.id!==id&&a.name.toLowerCase()===name.toLowerCase()))throw new Error('已经有同名账户，请换个名称。');
     const a={id:old?.id||uid(),name,color,openingBalance:moneyToCents($('#account-opening').value.trim()||'0')};
     const allowance=$('#account-allowance').value.trim();
-    if(allowance){const cents=moneyToCents(allowance);if(cents<=0)throw new Error('每月固定额度必须大于 0 元。');a.monthlyAllowance=cents;}
+    if(allowance){const cents=moneyToCents(allowance);if(cents<=0)throw new Error('每月固定额度必须大于 0 元。');a.monthlyAllowance=cents;a.allowanceMonth=localDate().slice(0,7);}
     await commit({...state,accounts:old?state.accounts.map(x=>x.id===id?a:x):[...state.accounts,a]});busy=false;closeModal();toast('账户已保存');
   });};
   if(old)$('#delete-account').onclick=()=>{
@@ -211,6 +211,17 @@ channel?.addEventListener('message',async e=>{
   try{const doc=await loadDocument();state=validateState(doc.state);revision=doc.revision;updatedAt=doc.updatedAt;render();toast('已同步这台设备另一页面的修改');}catch(err){toast(err.message);}
 });
 let updateRequested=false;
+async function refreshAllowances(){
+  const month=localDate().slice(0,7);
+  let changed=false;
+  const accounts=state.accounts.map(a=>{
+    if(a.monthlyAllowance===undefined)return a;
+    if(!a.allowanceMonth){changed=true;return{...a,allowanceMonth:month};}
+    if(a.allowanceMonth!==month){changed=true;return{...a,openingBalance:a.monthlyAllowance,allowanceMonth:month};}
+    return a;
+  });
+  if(changed)await commit({...state,accounts});
+}
 function showUpdateBar(worker){
   if(document.getElementById('update-bar'))return;
   const bar=document.createElement('button');
@@ -221,7 +232,9 @@ function showUpdateBar(worker){
 async function start(){
   try{
     const doc=await loadDocument();revision=doc.revision;updatedAt=doc.updatedAt||'';
-    state=doc.state?validateState(doc.state):createInitialState();render();
+    state=doc.state?validateState(doc.state):createInitialState();
+    await refreshAllowances();
+    render();
     if(!state.settings.setupDone)setup();
     if('serviceWorker' in navigator){
       navigator.serviceWorker.addEventListener('controllerchange',()=>{if(updateRequested)location.reload();});
