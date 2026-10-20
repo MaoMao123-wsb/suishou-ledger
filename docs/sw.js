@@ -1,4 +1,4 @@
-const CACHE = 'suishou-shell-v5';
+const CACHE = 'suishou-shell-v6';
 const FILES = ['./','./index.html','./styles.css','./app.js','./ledger.js','./parser.js','./storage.js','./icon.svg','./icon-180.png','./icon-192.png','./icon-512.png','./manifest.webmanifest'];
 self.addEventListener('install', event => {event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)));});
 self.addEventListener('activate', event => {event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith('suishou-shell-') && k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));});
