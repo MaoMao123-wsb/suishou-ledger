@@ -210,15 +210,25 @@ channel?.addEventListener('message',async e=>{
   if(modalOpen){toast('另一个页面更新了账本，请关闭当前操作后刷新。');return;}
   try{const doc=await loadDocument();state=validateState(doc.state);revision=doc.revision;updatedAt=doc.updatedAt;render();toast('已同步这台设备另一页面的修改');}catch(err){toast(err.message);}
 });
+let updateRequested=false;
+function showUpdateBar(worker){
+  if(document.getElementById('update-bar'))return;
+  const bar=document.createElement('button');
+  bar.id='update-bar';bar.className='update-bar';bar.textContent='有新版本，点此更新';
+  bar.onclick=()=>{updateRequested=true;worker.postMessage('ACTIVATE_UPDATE');};
+  document.body.append(bar);
+}
 async function start(){
   try{
     const doc=await loadDocument();revision=doc.revision;updatedAt=doc.updatedAt||'';
     state=doc.state?validateState(doc.state):createInitialState();render();
     if(!state.settings.setupDone)setup();
     if('serviceWorker' in navigator){
+      navigator.serviceWorker.addEventListener('controllerchange',()=>{if(updateRequested)location.reload();});
       navigator.serviceWorker.register('./sw.js').then(reg=>{
-        if(reg.waiting)toast('有新版本，关闭所有随手账页面后重新打开即可更新。');
-        reg.addEventListener('updatefound',()=>{const worker=reg.installing;worker?.addEventListener('statechange',()=>{if(worker.state==='installed'&&navigator.serviceWorker.controller)toast('新版本已准备好，下次打开时生效。');});});
+        const offer=worker=>{if(worker&&navigator.serviceWorker.controller)showUpdateBar(worker);};
+        if(reg.waiting)offer(reg.waiting);
+        reg.addEventListener('updatefound',()=>{const worker=reg.installing;worker?.addEventListener('statechange',()=>{if(worker.state==='installed')offer(worker);});});
       }).catch(()=>{/* Online bookkeeping remains available when the host disallows service workers. */});
     }
     navigator.storage?.persist?.().catch(()=>{});
