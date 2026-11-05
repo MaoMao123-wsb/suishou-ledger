@@ -14,3 +14,13 @@
 .account-allowance{font-size:9px;font-weight:500;color:#849060;background:#eef1df;border-radius:999px;padding:1px 5px;margin-left:4px;white-space:nowrap;letter-spacing:0}
 
 .update-bar{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:60;background:#3f4a2e;color:#fff;border-radius:999px;padding:11px 20px;font-size:13px;box-shadow:0 8px 24px #0003}
+
+.summary-card{margin:18px 0;border:1px solid var(--line);border-radius:16px;padding:16px}
+.summary-range{font-size:12px;color:var(--muted);margin-bottom:12px}
+.summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.summary-grid div{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.summary-grid strong{font-size:18px;color:var(--ink);font-variant-numeric:tabular-nums}
+.summary-expense{color:#a4574b}
+.summary-income{color:var(--green)}
+.summary-list{margin-top:14px;border-top:1px solid var(--line);padding-top:10px;display:grid;gap:8px}
+.summary-row{display:flex;gap:12px;font-size:12px;justify-content:space-between}
