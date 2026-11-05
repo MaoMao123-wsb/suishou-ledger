@@ -1,4 +1,4 @@
-import {createInitialState,moneyToCents,formatMoney,localDate,validateState,validateTransaction,getBalances,getTotalBalance,getMonthSummary,putTransaction,removeTransaction} from './ledger.js';
+import {createInitialState,moneyToCents,formatMoney,localDate,validateState,validateTransaction,getBalances,getTotalBalance,getMonthSummary,getRangeSummary,putTransaction,removeTransaction} from './ledger.js';
 import {parseSentence} from './parser.js';
 import {loadDocument,saveDocument} from './storage.js';
 
@@ -54,7 +54,7 @@ function recordList(records){
 }
 function recordsPage(){
   const list=state.transactions.filter(t=>t.date.startsWith(month)&&(filter==='all'||t.type===filter)&&(!query||`${t.purpose} ${accountName(t.accountId)} ${accountName(t.toAccountId)}`.toLowerCase().includes(query.toLowerCase()))).sort(sortRecords);
-  return `<div class="page-title-row"><h2>收支明细</h2><div class="month-control"><label class="sr-only" for="month">选择月份</label><input id="month" type="month" value="${month}" aria-label="选择月份"></div></div>${stats(month)}<div class="filter-bar" aria-label="交易类型筛选">${[['all','全部'],['expense','支出'],['income','收入'],['transfer','转账']].map(([id,label])=>`<button data-filter="${id}" class="filter-button ${filter===id?'active':''}" aria-pressed="${filter===id}">${label}</button>`).join('')}</div><label class="sr-only" for="search">搜索用途或账户</label><input class="search-field" id="search" placeholder="搜索用途或账户" value="${esc(query)}" type="search"><div class="section-head"><span class="muted small">${monthLabel()} · ${list.length} 笔记录</span><button class="text-button" data-action="manual">${icon('plus')}记一笔</button></div><div class="records-card card">${recordList(list)}</div>`;
+  return `<div class="page-title-row"><h2>收支明细</h2><div class="month-control"><label class="sr-only" for="month">选择月份</label><input id="month" type="month" value="${month}" aria-label="选择月份"></div><button class="text-button" data-action="summary">总结</button></div>${stats(month)}<div class="filter-bar" aria-label="交易类型筛选">${[['all','全部'],['expense','支出'],['income','收入'],['transfer','转账']].map(([id,label])=>`<button data-filter="${id}" class="filter-button ${filter===id?'active':''}" aria-pressed="${filter===id}">${label}</button>`).join('')}</div><label class="sr-only" for="search">搜索用途或账户</label><input class="search-field" id="search" placeholder="搜索用途或账户" value="${esc(query)}" type="search"><div class="section-head"><span class="muted small">${monthLabel()} · ${list.length} 笔记录</span><button class="text-button" data-action="manual">${icon('plus')}记一笔</button></div><div class="records-card card">${recordList(list)}</div>`;
 }
 function accountsPage(){
   const total=getTotalBalance(state);
@@ -152,6 +152,29 @@ function exportCSV(){
   const rows=[['日期','类型','金额（元）','用途','付款/入账账户','转入账户'],...state.transactions.slice().sort(sortRecords).map(t=>[t.date,{expense:'支出',income:'收入',transfer:'转账'}[t.type],formatMoney(t.amount),t.purpose,accountName(t.accountId),t.toAccountId?accountName(t.toAccountId):''])];
   downloadFile('\ufeff'+rows.map(r=>r.map(cell).join(',')).join('\r\n'),'text/csv;charset=utf-8',`随手账明细-${localDate()}.csv`);toast('明细已导出；完整恢复请使用 JSON 备份');
 }
+function exportRangeCSV(start,end){
+  const cell=value=>{let s=String(value??'');if(/^[=+@\-\t\r]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};
+  const list=state.transactions.filter(t=>t.date>=start&&t.date<=end).sort(sortRecords);
+  const rows=[['日期','类型','金额（元）','用途','付款/入账账户','转入账户'],...list.map(t=>[t.date,{expense:'支出',income:'收入',transfer:'转账'}[t.type],formatMoney(t.amount),t.purpose,accountName(t.accountId),t.toAccountId?accountName(t.toAccountId):''])];
+  downloadFile('\ufeff'+rows.map(r=>r.map(cell).join(',')).join('\r\n'),'text/csv;charset=utf-8',`随手账-${start}至${end}.csv`);toast('这段时间的明细已导出');
+}
+function openSummary(){
+  const start=month+'-01';
+  const end=month===localDate().slice(0,7)?localDate():`${month}-${String(new Date(Number(month.slice(0,4)),Number(month.slice(5,7)),0).getDate()).padStart(2,'0')}`;
+  showModal(`<p class="modal-intro">选一段时间，看看这段时间花了多少、收入多少；也可以把这段时间的明细导出成 CSV。</p><div class="field-row"><label class="field"><span>开始日期</span><input id="summary-start" type="date" value="${start}" required></label><label class="field"><span>结束日期</span><input id="summary-end" type="date" value="${end}" required></label></div><div id="summary-result"></div><div id="form-error" class="form-error"></div><div class="modal-actions"><button class="secondary" id="summary-export" disabled>导出 CSV</button><button class="primary" id="summary-run">生成总结</button></div>`,{title:'按时间段总结',wide:true});
+  const run=()=>{
+    const s=$('#summary-start').value,e=$('#summary-end').value;
+    try{
+      const result=getRangeSummary(state,s,e);
+      const rows=state.accounts.filter(a=>result.byAccount[a.id]).map(a=>{const r=result.byAccount[a.id];return `<div class="summary-row"><span>${esc(a.name)}</span><span class="summary-expense">支出 ¥${fmt(r.expense)}</span>${r.income?`<span class="summary-income">收入 ¥${fmt(r.income)}</span>`:''}</div>`;}).join('');
+      $('#summary-result').innerHTML=`<div class="summary-card"><div class="summary-range">${s} 至 ${e} · ${result.count} 笔</div><div class="summary-grid"><div><span>总支出</span><strong class="summary-expense">¥${fmt(result.expense)}</strong></div><div><span>总收入</span><strong class="summary-income">¥${fmt(result.income)}</strong></div><div><span>净额</span><strong>¥${fmt(result.net)}</strong></div></div>${rows?`<div class="summary-list">${rows}</div>`:'<p class="muted small">这段时间没有收支记录。</p>'}</div>`;
+      $('#summary-export').disabled=false;
+      $('#summary-export').onclick=()=>exportRangeCSV(s,e);
+    }catch(err){$('#summary-result').innerHTML='';$('#form-error').textContent=err.message;$('#summary-export').disabled=true;}
+  };
+  $('#summary-run').onclick=run;
+  run();
+}
 function settings(){
   showModal(`<p class="modal-intro">账本保存在当前设备、当前浏览器里。导出一份备份，可以在换手机后恢复。</p><div class="backup-list"><button class="setting-tile" id="export-backup">${icon('download')}<span><strong>导出完整备份</strong><small>JSON 文件 · 包含账户、起始余额与全部收支</small></span></button><button class="setting-tile" id="import-backup">${icon('upload')}<span><strong>从备份恢复</strong><small>选择随手账 JSON 备份，核对后替换本机账本</small></span></button><button class="setting-tile" id="export-csv">${icon('list')}<span><strong>导出收支明细</strong><small>CSV 文件 · 便于在表格软件中查看</small></span></button></div><input type="file" class="hidden-input" id="backup-file" accept=".json,application/json"><div class="setting-divider"></div><div class="settings-help"><strong>在 iPhone 上像 App 一样使用</strong><ol><li>用 Safari 打开这个网址。</li><li>点“分享”，再选“添加到主屏幕”。</li><li>在主屏幕首次打开后，完成账户设置；以后从同一个图标进入。</li></ol><p>Safari 与主屏幕图标中的存储可能独立。若需要搬移账本，先导出 JSON，再在目标入口恢复。</p><br><strong>关于本机保存</strong><p>不上传账单，不自动连接支付账户。清理网站数据、无痕浏览或系统清理存储，都可能影响记录。请定期将 JSON 备份存到“文件”中。</p><p style="margin-top:12px">${state.settings.lastBackupAt?'最近生成备份：'+esc(new Date(state.settings.lastBackupAt).toLocaleString('zh-CN')):'还没有生成过完整备份。'}</p><p style="margin-top:12px">随手账 · 个人版 1.0</p></div>`,{title:'备份与使用',wide:true});
   $('#export-backup').onclick=exportBackup;$('#export-csv').onclick=exportCSV;
@@ -188,6 +211,7 @@ $('#app').addEventListener('click',e=>{
     case 'settings':settings();break;
     case 'manual':openEditor();break;
     case 'add-account':openAccount();break;
+    case 'summary':openSummary();break;
     case 'transfer':openEditor({type:'transfer',purpose:'账户转账'});break;
     case 'backup':exportBackup();break;
     case 'parse':{
