@@ -253,6 +253,26 @@ export function getMonthSummary(state, monthYYYYMM) {
   return { income, expense, net: add(income, -expense) };
 }
 
+export function getRangeSummary(state, start, end) {
+  if (!isRealDate(start) || !isRealDate(end)) fail('请选择有效的开始和结束日期');
+  if (start > end) fail('开始日期不能晚于结束日期');
+  const checked = validateState(state);
+  const summary = { income: 0, expense: 0, net: 0, count: 0, byAccount: {} };
+  for (const tx of checked.transactions) {
+    if (tx.date < start || tx.date > end) continue;
+    summary.count++;
+    if (tx.type === 'income') summary.income = add(summary.income, tx.amount);
+    if (tx.type === 'expense') summary.expense = add(summary.expense, tx.amount);
+    if (tx.type === 'transfer') continue;
+    const row = summary.byAccount[tx.accountId] || { income: 0, expense: 0 };
+    if (tx.type === 'income') row.income = add(row.income, tx.amount);
+    else row.expense = add(row.expense, tx.amount);
+    summary.byAccount[tx.accountId] = row;
+  }
+  summary.net = add(summary.income, -summary.expense);
+  return summary;
+}
+
 export function putTransaction(state, transaction) {
   const checked = validateState(state);
   const tx = validateTransaction(transaction, checked.accounts);
