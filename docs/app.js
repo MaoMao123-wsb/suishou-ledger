@@ -50,7 +50,7 @@ function accountCards(){
 const sortRecords=(a,b)=>b.date.localeCompare(a.date)||b.createdAt.localeCompare(a.createdAt);
 function recordList(records){
   if(!records.length)return `<div class="empty"><div class="empty-mark">${icon('list')}</div><div class="empty-title">${state.transactions.length?'这里还没有记录':'你的第一笔，值得被记下'}</div><p>${state.transactions.length?'试试换个月份或筛选条件。':'在上方写一句话，开始自己的账本。'}</p></div>`;
-  return records.map(t=>`<button class="record" data-record="${esc(t.id)}"><span class="record-icon ${t.type}">${icon(t.type==='expense'?'out':t.type==='income'?'in':'transfer')}</span><span class="record-main"><span class="record-title">${esc(t.purpose)}</span><span class="record-sub" style="display:block">${esc(accountName(t.accountId))}${t.type==='transfer'?' → '+esc(accountName(t.toAccountId)):t.type==='income'?' · 收入':' · 支出'}</span></span><span class="record-right"><span class="record-amount money ${t.type==='income'?'income-text':t.type==='transfer'?'transfer-text':''}">${t.type==='expense'?'−':t.type==='income'?'+':''}${fmt(t.amount)}</span><span class="record-day" style="display:block">${dateLabel(t.date)}</span></span></button>`).join('');
+  return records.map(t=>`<button class="record" data-record="${esc(t.id)}"><span class="record-icon ${t.type==='adjustment'?'transfer':t.type}">${icon(t.type==='expense'?'out':t.type==='income'?'in':t.type==='transfer'?'transfer':'spark')}</span><span class="record-main"><span class="record-title">${esc(t.purpose)}</span><span class="record-sub" style="display:block">${esc(accountName(t.accountId))}${t.type==='transfer'?' → '+esc(accountName(t.toAccountId)):t.type==='income'?' · 收入':t.type==='adjustment'?' · 余额调整':' · 支出'}</span></span><span class="record-right"><span class="record-amount money ${t.type==='income'?'income-text':t.type==='transfer'||t.type==='adjustment'?'transfer-text':''}">${t.type==='expense'?'−':t.type==='income'?'+':t.type==='adjustment'?(t.amount>0?'+':'−'):''}${fmt(Math.abs(t.amount))}</span><span class="record-day" style="display:block">${dateLabel(t.date)}</span></span></button>`).join('');
 }
 function recordsPage(){
   const list=state.transactions.filter(t=>t.date.startsWith(month)&&(filter==='all'||t.type===filter)&&(!query||`${t.purpose} ${accountName(t.accountId)} ${accountName(t.toAccountId)}`.toLowerCase().includes(query.toLowerCase()))).sort(sortRecords);
@@ -118,7 +118,7 @@ function setup(){
 }
 function openAccount(id){
   const old=state.accounts.find(a=>a.id===id);let color=old?.color||colors[state.accounts.length%colors.length];
-  showModal(`<form id="account-form"><label class="field"><span>账户名称</span><input id="account-name" maxlength="20" value="${esc(old?.name||'')}" placeholder="例如：招商银行卡" required></label><label class="field"><span>起始余额（元）</span><input id="account-opening" inputmode="decimal" value="${old?formatMoney(old.openingBalance):''}" placeholder="0.00"></label><label class="field"><span>每月固定额度（元，可选）</span><input id="account-allowance" inputmode="decimal" value="${old?.monthlyAllowance?formatMoney(old.monthlyAllowance):''}" placeholder="例如 1000，留空为普通账户"></label><p class="section-caption">${old?'这是开始记账前的余额，修改会影响当前余额。日常的收入、支出和转账请通过记账记录。':'填写这个账户在开始记录前已有的金额。'}<br>填了“每月固定额度”后，这里填本月开始时的实际余额（比如月中添加时填 200）；每月 1 号会自动变回额度，额度不计入收入。</p><span class="field-label" style="margin-top:22px">账户颜色</span><div class="color-options">${colors.map(c=>`<button type="button" class="color-option ${c===color?'active':''}" data-color="${c}" style="--swatch:${c}" aria-label="选择颜色 ${c}" aria-pressed="${c===color}"></button>`).join('')}</div><div id="form-error" class="form-error"></div><div class="modal-actions"><button type="button" class="secondary" id="cancel-account">取消</button><button id="save-button" class="primary" type="submit">保存账户</button></div></form>${old?'<button class="delete-button" id="delete-account">删除账户</button>':''}`,{title:old?'管理账户':'添加一个账户'});
+  showModal(`<form id="account-form"><label class="field"><span>账户名称</span><input id="account-name" maxlength="20" value="${esc(old?.name||'')}" placeholder="例如：招商银行卡" required></label><label class="field"><span>起始余额（元）</span><input id="account-opening" inputmode="decimal" value="${old?formatMoney(old.openingBalance):''}" placeholder="0.00"></label><label class="field"><span>每月固定额度（元，可选）</span><input id="account-allowance" inputmode="decimal" value="${old?.monthlyAllowance?formatMoney(old.monthlyAllowance):''}" placeholder="例如 1000，留空为普通账户"></label><p class="section-caption">${old?'这是开始记账前的余额，修改会影响当前余额。日常的收入、支出和转账请通过记账记录。':'填写这个账户在开始记录前已有的金额。'}<br>填了“每月固定额度”后，这里填本月开始时的实际余额（比如月中添加时填 200）；每月 1 号会自动变回额度，额度不计入收入。</p>${old?`<div class="balance-adjust"><p>当前余额 <strong>¥${fmt(getBalances(state)[old.id]??0)}</strong></p><label class="field"><span>调整到（元）</span><input id="balance-target" inputmode="decimal" placeholder="${formatMoney(getBalances(state)[old.id]??0)}"></label><button type="button" class="secondary wide-button" id="apply-balance">保存余额调整</button><p class="section-caption">忘记记账、或和实际钱对不上时用这里；会记一条“余额调整”，不计入收入支出。</p></div>`:''}<span class="field-label" style="margin-top:22px">账户颜色</span><div class="color-options">${colors.map(c=>`<button type="button" class="color-option ${c===color?'active':''}" data-color="${c}" style="--swatch:${c}" aria-label="选择颜色 ${c}" aria-pressed="${c===color}"></button>`).join('')}</div><div id="form-error" class="form-error"></div><div class="modal-actions"><button type="button" class="secondary" id="cancel-account">取消</button><button id="save-button" class="primary" type="submit">保存账户</button></div></form>${old?'<button class="delete-button" id="delete-account">删除账户</button>':''}`,{title:old?'管理账户':'添加一个账户'});
   $('#cancel-account').onclick=closeModal;
   document.querySelectorAll('[data-color]').forEach(b=>b.onclick=()=>{color=b.dataset.color;document.querySelectorAll('[data-color]').forEach(x=>{x.classList.toggle('active',x===b);x.setAttribute('aria-pressed',String(x===b));});});
   $('#account-form').onsubmit=e=>{e.preventDefault();formTask(async()=>{
@@ -129,6 +129,18 @@ function openAccount(id){
     if(allowance){const cents=moneyToCents(allowance);if(cents<=0)throw new Error('每月固定额度必须大于 0 元。');a.monthlyAllowance=cents;a.allowanceMonth=localDate().slice(0,7);}
     await commit({...state,accounts:old?state.accounts.map(x=>x.id===id?a:x):[...state.accounts,a]});busy=false;closeModal();toast('账户已保存');
   });};
+  $('#apply-balance')?.addEventListener('click',()=>{
+    const raw=$('#balance-target').value.trim();
+    if(!raw){formError(new Error('请输入调整后的余额'));return;}
+    const target=moneyToCents(raw);
+    const current=getBalances(state)[old.id]??0;
+    const delta=target-current;
+    if(delta===0){toast('余额没有变化');return;}
+    formTask(async()=>{
+      await commit(putTransaction(state,{id:uid(),type:'adjustment',amount:delta,accountId:old.id,purpose:'余额调整',date:localDate(),createdAt:new Date().toISOString()}));
+      busy=false;closeModal();toast('余额已调整');
+    });
+  });
   if(old)$('#delete-account').onclick=()=>{
     if(state.accounts.length<=1){formError(new Error('至少保留一个账户。'));return;}
     if(state.transactions.some(t=>t.accountId===id||t.toAccountId===id)){formError(new Error('这个账户已有记账记录，暂不能删除。可以修改名称。'));return;}
@@ -204,7 +216,7 @@ $('#app').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;
   if(b.dataset.nav){view=b.dataset.nav;render();window.scrollTo({top:0,behavior:'auto'});return;}
   if(b.dataset.account){openAccount(b.dataset.account);return;}
-  if(b.dataset.record){const tx=state.transactions.find(t=>t.id===b.dataset.record);if(tx)openEditor(tx,tx);return;}
+  if(b.dataset.record){const tx=state.transactions.find(t=>t.id===b.dataset.record);if(tx){if(tx.type==='adjustment'){if(confirm(`删除这条余额调整（${tx.amount>0?'+':''}${formatMoney(tx.amount)} 元）？余额会恢复。`))formTask(async()=>{await commit(removeTransaction(state,tx.id));toast('调整已撤销');});}else openEditor(tx,tx);}return;}
   if(b.dataset.example){draftText=b.dataset.example;$('#sentence').value=draftText;$('#sentence').focus();return;}
   if(b.dataset.filter){filter=b.dataset.filter;render();return;}
   switch(b.dataset.action){
