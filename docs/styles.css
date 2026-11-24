@@ -24,3 +24,7 @@
 .summary-income{color:var(--green)}
 .summary-list{margin-top:14px;border-top:1px solid var(--line);padding-top:10px;display:grid;gap:8px}
 .summary-row{display:flex;gap:12px;font-size:12px;justify-content:space-between}
+
+.balance-adjust{margin:18px 0;padding:14px;border:1px solid var(--line);border-radius:14px;background:#fbfaf5}
+.balance-adjust p{font-size:13px;color:var(--muted);margin-bottom:10px}
+.balance-adjust strong{color:var(--ink);font-size:18px}
