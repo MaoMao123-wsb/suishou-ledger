@@ -36,6 +36,11 @@ function cents(value, label, allowZero = false) {
   return value;
 }
 
+function signedCents(value, label) {
+  if (!Number.isSafeInteger(value) || value === 0) fail(`${label}必须是非零的安全整数分`);
+  return value;
+}
+
 function add(a, b, label = '金额合计') {
   const result = a + b;
   if (!Number.isSafeInteger(result)) fail(`${label}超出可支持的金额范围`);
@@ -108,7 +113,10 @@ function calculateBalances(state) {
     total = add(total, account.openingBalance, '总余额');
   }
   for (const tx of state.transactions) {
-    if (tx.type === 'income') {
+    if (tx.type === 'adjustment') {
+      balances[tx.accountId] = add(balances[tx.accountId], tx.amount, '账户余额');
+      total = add(total, tx.amount, '总余额');
+    } else if (tx.type === 'income') {
       balances[tx.accountId] = add(balances[tx.accountId], tx.amount, '账户余额');
       total = add(total, tx.amount, '总余额');
     } else {
@@ -162,8 +170,8 @@ export function validateTransaction(value, accounts) {
   const checkedAccounts = validateAccounts(accounts);
   record(value, '账目', TRANSACTION_KEYS);
   const id = identifier(value.id, '账目编号');
-  if (!['expense', 'income', 'transfer'].includes(value.type)) fail('账目类型不正确');
-  const amount = cents(value.amount, '账目金额');
+  if (!['expense', 'income', 'transfer', 'adjustment'].includes(value.type)) fail('账目类型不正确');
+  const amount = value.type === 'adjustment' ? signedCents(value.amount, '调整金额') : cents(value.amount, '账目金额');
   const accountId = identifier(value.accountId, '账户编号');
   const ids = new Set(checkedAccounts.map((account) => account.id));
   if (!ids.has(accountId)) fail('账目引用了不存在的账户');
@@ -196,7 +204,7 @@ export function validateState(value) {
     const tx = validateTransaction(item, accounts);
     if (ids.has(tx.id)) fail('账目编号不能重复');
     ids.add(tx.id);
-    if (tx.type !== 'transfer') {
+    if (tx.type !== 'transfer' && tx.type !== 'adjustment') {
       const key = `${tx.date.slice(0, 7)}:${tx.type}`;
       months.set(key, add(months.get(key) || 0, tx.amount, '月度收支合计'));
     }
@@ -224,7 +232,9 @@ export function getBalances(state, monthKey = localDate().slice(0, 7)) {
   for (const tx of checked.transactions) {
     const fromMonthly = monthly.has(tx.accountId);
     const toMonthly = tx.toAccountId ? monthly.has(tx.toAccountId) : false;
-    if (tx.type === 'income') {
+    if (tx.type === 'adjustment') {
+      if (!fromMonthly || inMonth(tx)) balances[tx.accountId] = add(balances[tx.accountId], tx.amount, '账户余额');
+    } else if (tx.type === 'income') {
       if (!fromMonthly || inMonth(tx)) balances[tx.accountId] = add(balances[tx.accountId], tx.amount, '账户余额');
     } else {
       if (!fromMonthly || inMonth(tx)) balances[tx.accountId] = add(balances[tx.accountId], -tx.amount, '账户余额');
@@ -263,7 +273,7 @@ export function getRangeSummary(state, start, end) {
     summary.count++;
     if (tx.type === 'income') summary.income = add(summary.income, tx.amount);
     if (tx.type === 'expense') summary.expense = add(summary.expense, tx.amount);
-    if (tx.type === 'transfer') continue;
+    if (tx.type === 'transfer' || tx.type === 'adjustment') continue;
     const row = summary.byAccount[tx.accountId] || { income: 0, expense: 0 };
     if (tx.type === 'income') row.income = add(row.income, tx.amount);
     else row.expense = add(row.expense, tx.amount);
